@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+
+# Robot Framework
+log.html
+output.xml
+report.html
+*.png
+results/
+
+# Project specific
+data/training_data.csv
+data/report_*.csv
+data/consensus_report.csv
+models/
+output/
+run_log*.txt
+output_*.txt
