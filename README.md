@@ -65,7 +65,10 @@ python main.py
     Check `data/consensus_report.csv` for the final winners.
 
 ## Assumptions & Design Decisions
-- **Data Source**: We assume `yfinance` data is accurate. Missing values and infinite values (e.g., division by zero) are handled by filling with 0, assuming that missing/undefined financial data often implies "negligible" or "not applicable" for that metric.
+- **Data Source**: We assume `yfinance` data is accurate. 
+- **Data Handling**: Rows with missing **Price** or **Market Cap** are dropped. Remaining gaps are filled using **Median Imputation**.
+- **Outlier Filtering**: We apply a **99th Percentile Filter** to remove "Whale" companies (like Berkshire Hathaway) that distort the training process.
+- **Scaling**: Robust transformations (PowerTransformer, QuantileTransformer) are used to handle the heavy-tailed distribution of financial data.
 - **Model Independence**: Each model is trained independently on the same dataset (`data/training_data.csv`) to ensure diversity in opinion.
 - **Consensus Logic**: A stock is only a "Winner" if it has >20% upside potential according to the specific model. The final consensus requires votes from multiple models to filter out noise.
 - **Market Efficiency**: The bot assumes that market inefficiencies exist and that fundamental metrics can predict fair value better than current market price.

@@ -21,3 +21,6 @@ models/
 output/
 run_log*.txt
 output_*.txt
+
+# Exclude zip files (submissions)
+*.zip
