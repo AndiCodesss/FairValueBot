@@ -5,7 +5,7 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader, TensorDataset
 from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import StandardScaler
+from sklearn.preprocessing import PowerTransformer, QuantileTransformer
 from sklearn.metrics import mean_squared_error, r2_score
 import os
 
@@ -69,25 +69,34 @@ def train():
     ]
     target = 'Price'
     
-    
     df = df.replace([np.inf, -np.inf], 0)
     df = df.fillna(0)
+    
+    # Use 99th percentile as threshold - adapts automatically to any dataset.
+    price_threshold = np.percentile(df[target], 99)
+    original_count = len(df)
+    df = df[df[target] <= price_threshold]
+    filtered_count = len(df)
+    print(f"Filtered data: {original_count} -> {filtered_count} samples (removed top 1% outliers > ${price_threshold:.2f})")
     
     X = df[features].values
     y = df[target].values
     
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
     
-    # Scale Data (Required for PyTorch too)
-    scaler = StandardScaler()
-    X_train_scaled = scaler.fit_transform(X_train)
-    X_test_scaled = scaler.transform(X_test)
+    # Scale Features using PowerTransformer (handles skewed financial data)
+    scaler_x = PowerTransformer()
+    X_train_scaled = scaler_x.fit_transform(X_train)
+    X_test_scaled = scaler_x.transform(X_test)
+    
+    # Scale Target using QuantileTransformer (robust to remaining outliers via ranking)
+    scaler_y = QuantileTransformer(output_distribution='normal', n_quantiles=min(len(y_train), 1000))
+    y_train_transformed = scaler_y.fit_transform(y_train.reshape(-1, 1))
     
     # Convert to PyTorch Tensors
     X_train_tensor = torch.FloatTensor(X_train_scaled)
-    y_train_tensor = torch.FloatTensor(y_train).view(-1, 1)
+    y_train_tensor = torch.FloatTensor(y_train_transformed)
     X_test_tensor = torch.FloatTensor(X_test_scaled)
-    y_test_tensor = torch.FloatTensor(y_test).view(-1, 1)
     
     # Create Data Loader for batching
     dataset = TensorDataset(X_train_tensor, y_train_tensor)
@@ -95,7 +104,7 @@ def train():
     
     # Initialize Model
     model = ValuationNet(input_size=len(features))
-    criterion = nn.MSELoss() # Mean Squared Error Loss
+    criterion = nn.MSELoss()
     optimizer = optim.Adam(model.parameters(), lr=0.001)
     
     # Training Loop
@@ -114,21 +123,29 @@ def train():
         if (epoch+1) % 20 == 0:
             print(f"Epoch {epoch+1}/{epochs}, Loss: {epoch_loss/len(dataloader):.4f}")
             
-    # Evaluate
+    # Evaluation
     model.eval()
     with torch.no_grad():
-        predictions = model(X_test_tensor).numpy()
+        prediction_z_scores = model(X_test_tensor).numpy()
+        predictions = scaler_y.inverse_transform(prediction_z_scores)
         
+    predictions = predictions.flatten()
+    
+    # Clamp to non-negative (prices can't be negative)
+    predictions = np.clip(predictions, 0, None)
+
     mse = mean_squared_error(y_test, predictions)
     r2 = r2_score(y_test, predictions)
     
     print(f"Model Trained! MSE: {mse:.2f}, R2 Score: {r2:.2f}")
     
-    # Save Model and Scaler
+    # Save Model, Scalers, and Price Threshold
     checkpoint = {
         'model_state_dict': model.state_dict(),
-        'scaler': scaler,
-        'input_size': len(features)
+        'scaler_x': scaler_x,
+        'scaler_y': scaler_y,
+        'input_size': len(features),
+        'price_threshold': price_threshold
     }
     torch.save(checkpoint, MODEL_PATH)
     print(f"Saved PyTorch model to {MODEL_PATH}")

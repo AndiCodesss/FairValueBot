@@ -16,19 +16,19 @@ def main():
     print("Step 1: Training models...")
     
     # Linear Regression (Simple baseline)
-    subprocess.check_call([sys.executable, "src/training/train_lr.py"])
+    #subprocess.check_call([sys.executable, "src/training/train_lr.py"])
     
     # Random Forest (Decision trees)
-    subprocess.check_call([sys.executable, "src/training/train_rf.py"])
+    #subprocess.check_call([sys.executable, "src/training/train_rf.py"])
     
     # Neural Network (Scikit-Learn MLP)
-    subprocess.check_call([sys.executable, "src/training/train_ml.py"])
+    #subprocess.check_call([sys.executable, "src/training/train_ml.py"])
     
     # XGBoost (Gradient Boosting - very powerful)
-    subprocess.check_call([sys.executable, "src/training/train_xgb.py"])
+    #subprocess.check_call([sys.executable, "src/training/train_xgb.py"])
     
     # Deep Learning (PyTorch Custom Network)
-    subprocess.check_call([sys.executable, "src/training/train_dl.py"])
+    #subprocess.check_call([sys.executable, "src/training/train_dl.py"])
 
     # Step 2: Run the Robot
     # The robot scrapes Yahoo Finance for active tickers and runs the prediction scripts.

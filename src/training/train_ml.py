@@ -9,7 +9,7 @@ import os
 
 # This script trains a Neural Network (MLP).
 # Neural Networks are inspired by the human brain and can learn very complex patterns.
-# IMPORTANT: Neural Networks need data to be "Scaled" (numbers between -1 and 1 usually).
+# Neural Networks need data to be "Scaled" (numbers between -1 and 1 usually).
 
 # Setup paths
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -36,6 +36,13 @@ def train():
     df = df.replace([np.inf, -np.inf], 0)
     df = df.fillna(0)
     
+    # Use 99th percentile as threshold - adapts automatically to any dataset.
+    price_threshold = np.percentile(df[target], 99)
+    original_count = len(df)
+    df = df[df[target] <= price_threshold]
+    filtered_count = len(df)
+    print(f"Filtered data: {original_count} -> {filtered_count} samples (removed top 1% outliers > ${price_threshold:.2f})")
+    
     X = df[features]
     y = df[target]
     
@@ -46,18 +53,24 @@ def train():
     X_train_scaled = scaler.fit_transform(X_train)
     X_test_scaled = scaler.transform(X_test)
     
+    # Scale the Target (Log Transform) to handle large price ranges
+    y_train_log = np.log1p(y_train)
+
     # Create a network with 2 hidden layers (100 neurons, then 50 neurons)
     model = MLPRegressor(hidden_layer_sizes=(100, 50), max_iter=1000, random_state=42)
-    model.fit(X_train_scaled, y_train)
+    model.fit(X_train_scaled, y_train_log)
     
-    predictions = model.predict(X_test_scaled)
+    # Predict in Log Space, then convert back
+    log_predictions = model.predict(X_test_scaled)
+    predictions = np.expm1(log_predictions)
+    
     mse = mean_squared_error(y_test, predictions)
     r2 = r2_score(y_test, predictions)
     
     print(f"Model Trained! MSE: {mse:.2f}, R2 Score: {r2:.2f}")
     
-    # We must save BOTH the model AND the scaler, because we need the scaler for predictions later.
-    joblib.dump({'model': model, 'scaler': scaler}, MODEL_PATH)
+    # Save model, scaler, and price threshold for inference
+    joblib.dump({'model': model, 'scaler': scaler, 'price_threshold': price_threshold}, MODEL_PATH)
     print(f"Saved model and scaler to {MODEL_PATH}")
 
 if __name__ == "__main__":

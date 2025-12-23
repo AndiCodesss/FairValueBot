@@ -15,7 +15,7 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__fil
 MODEL_PATH = os.path.join(BASE_DIR, 'models', 'valuation_model_lr.joblib')
 REPORT_PATH = os.path.join(BASE_DIR, 'data', 'report_lr.csv')
 
-def analyze_ticker(ticker, model):
+def analyze_ticker(ticker, model, scaler):
     # Fetches data for a single ticker and predicts its price
     try:
         stock = yf.Ticker(ticker)
@@ -52,8 +52,11 @@ def analyze_ticker(ticker, model):
         # Create DataFrame for prediction
         df = pd.DataFrame([features])
         
-        # Predict!
-        prediction = model.predict(df)[0]
+        # Scale the features
+        df_scaled = scaler.transform(df)
+        
+        # Predict
+        prediction = model.predict(df_scaled)[0]
         
         # Ensure prediction isn't negative (stocks can't be negative)
         if prediction < 0.01:
@@ -77,17 +80,26 @@ def generate_report(tickers):
         print("Error: Model not found.")
         return
 
-    model = joblib.load(MODEL_PATH)
+    # Load dictionary containing model, scaler, and price threshold
+    saved_data = joblib.load(MODEL_PATH)
+    model = saved_data['model']
+    scaler = saved_data['scaler']
+    price_threshold = saved_data.get('price_threshold', 1000)  # Default if not saved
     
-    print(f"Analyzing {len(tickers)} tickers with Linear Regression...")
+    print(f"Analyzing {len(tickers)} tickers with Linear Regression (max price: ${price_threshold:.2f})...")
     results = []
+    skipped = 0
     
     for i, ticker in enumerate(tickers):
         if i % 10 == 0:
             print(f"Processing {i}/{len(tickers)}: {ticker}...")
         
-        data = analyze_ticker(ticker, model)
+        data = analyze_ticker(ticker, model, scaler)
         if data:
+            # Skip stocks above the training threshold
+            if data['Price'] > price_threshold:
+                skipped += 1
+                continue
             results.append(data)
             
     if not results:

@@ -44,7 +44,7 @@ class ValuationNet(nn.Module):
         x = self.output(x)
         return x
 
-def analyze_ticker(ticker, model, scaler):
+def analyze_ticker(ticker, model, scaler_x, scaler_y):
     try:
         stock = yf.Ticker(ticker)
         info = stock.info
@@ -74,15 +74,17 @@ def analyze_ticker(ticker, model, scaler):
             val = features_dict[key]
             features_list.append(val if val is not None else 0)
             
-        # Scale and convert to Tensor
+        # Scale features using scaler_x
         features_array = np.array([features_list])
-        features_scaled = scaler.transform(features_array)
+        features_scaled = scaler_x.transform(features_array)
         features_tensor = torch.FloatTensor(features_scaled)
         
-        # Predict
+        # Predict (outputs Z-score)
         model.eval()
         with torch.no_grad():
-            prediction = model(features_tensor).item()
+            z_score = model(features_tensor).numpy()
+            # Convert Z-score back to real price using scaler_y
+            prediction = scaler_y.inverse_transform(z_score)[0][0]
         
         if prediction < 0.01: prediction = 0.01
             
@@ -102,22 +104,30 @@ def generate_report(tickers):
         print("Error: Model not found.")
         return
 
-    # Load Checkpoint (weights_only=False is needed for the scaler)
+    # Load Checkpoint (weights_only=False is needed for the scalers)
     checkpoint = torch.load(MODEL_PATH, weights_only=False)
     model_state = checkpoint['model_state_dict']
-    scaler = checkpoint['scaler']
+    scaler_x = checkpoint['scaler_x']
+    scaler_y = checkpoint['scaler_y']
     input_size = checkpoint['input_size']
+    price_threshold = checkpoint.get('price_threshold', 1000)  # Default if not saved
     
     model = ValuationNet(input_size)
     model.load_state_dict(model_state)
     
-    print(f"Analyzing {len(tickers)} tickers with Deep Learning...")
+    print(f"Analyzing {len(tickers)} tickers with Deep Learning (max price: ${price_threshold:.2f})...")
     
     results = []
+    skipped = 0
     for i, ticker in enumerate(tickers):
         if i % 10 == 0: print(f"Processing {i}/{len(tickers)}: {ticker}...")
-        data = analyze_ticker(ticker, model, scaler)
-        if data: results.append(data)
+        data = analyze_ticker(ticker, model, scaler_x, scaler_y)
+        if data:
+            # Skip stocks above the training threshold
+            if data['Price'] > price_threshold:
+                skipped += 1
+                continue
+            results.append(data)
             
     if not results: return
 

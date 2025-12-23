@@ -67,18 +67,25 @@ def generate_report(tickers):
         print("Error: Model not found.")
         return
 
-    # Load dictionary containing both model and scaler
+    # Load dictionary containing model, scaler, and price threshold
     saved_data = joblib.load(MODEL_PATH)
     model = saved_data['model']
     scaler = saved_data['scaler']
+    price_threshold = saved_data.get('price_threshold', 1000)  # Default if not saved
     
-    print(f"Analyzing {len(tickers)} tickers with Neural Network (MLP)...")
+    print(f"Analyzing {len(tickers)} tickers with Neural Network (MLP, max price: ${price_threshold:.2f})...")
     
     results = []
+    skipped = 0
     for i, ticker in enumerate(tickers):
         if i % 10 == 0: print(f"Processing {i}/{len(tickers)}: {ticker}...")
         data = analyze_ticker(ticker, model, scaler)
-        if data: results.append(data)
+        if data:
+            # Skip stocks above the training threshold
+            if data['Price'] > price_threshold:
+                skipped += 1
+                continue
+            results.append(data)
             
     if not results: return
 
