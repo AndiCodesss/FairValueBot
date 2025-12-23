@@ -44,7 +44,7 @@ class ValuationNet(nn.Module):
         x = self.output(x)
         return x
 
-def analyze_ticker(ticker, model, scaler_x, scaler_y):
+def analyze_ticker(ticker, model, scaler_x, scaler_y, imputer):
     try:
         stock = yf.Ticker(ticker)
         info = stock.info
@@ -69,14 +69,18 @@ def analyze_ticker(ticker, model, scaler_x, scaler_y):
         
         if price is None: return None
 
-        features_list = []
-        for key in features_dict:
-            val = features_dict[key]
-            features_list.append(val if val is not None else 0)
-            
+        # Create DataFrame directly from features dict (preserves None as NaN)
+        df = pd.DataFrame([features_dict])
+        
+        if imputer:
+             # Imputer will handle Nones (NaNs)
+             features_imputed = imputer.transform(df)
+        else:
+             # Fallback
+             features_imputed = df.fillna(0).values
+
         # Scale features using scaler_x
-        features_array = np.array([features_list])
-        features_scaled = scaler_x.transform(features_array)
+        features_scaled = scaler_x.transform(features_imputed)
         features_tensor = torch.FloatTensor(features_scaled)
         
         # Predict (outputs Z-score)
@@ -109,8 +113,9 @@ def generate_report(tickers):
     model_state = checkpoint['model_state_dict']
     scaler_x = checkpoint['scaler_x']
     scaler_y = checkpoint['scaler_y']
+    imputer = checkpoint.get('imputer') 
     input_size = checkpoint['input_size']
-    price_threshold = checkpoint.get('price_threshold', 1000)  # Default if not saved
+    price_threshold = checkpoint.get('price_threshold', 1000)
     
     model = ValuationNet(input_size)
     model.load_state_dict(model_state)
@@ -121,7 +126,7 @@ def generate_report(tickers):
     skipped = 0
     for i, ticker in enumerate(tickers):
         if i % 10 == 0: print(f"Processing {i}/{len(tickers)}: {ticker}...")
-        data = analyze_ticker(ticker, model, scaler_x, scaler_y)
+        data = analyze_ticker(ticker, model, scaler_x, scaler_y, imputer)
         if data:
             # Skip stocks above the training threshold
             if data['Price'] > price_threshold:

@@ -34,29 +34,36 @@ def train():
     ]
     target = 'Price'
     
-    # Fill missing values with 0
-    df = df.replace([np.inf, -np.inf], 0)
-    df = df.fillna(0)
+    # HANDLE MISSING DATA PROPERLY
+    # 0. Replace Infinity with NaN (SimpleImputer doesn't handle Inf)
+    df = df.replace([np.inf, -np.inf], np.nan)
     
-    # Use 99th percentile as threshold - adapts automatically to any dataset.
-    price_threshold = np.percentile(df[target], 99)
-    original_count = len(df)
-    df = df[df[target] <= price_threshold]
-    filtered_count = len(df)
-    print(f"Filtered data: {original_count} -> {filtered_count} samples (removed top 1% outliers > ${price_threshold:.2f})")
+    # 1. Drop rows where we have absolutely NO valid info or target
+    df = df.dropna(subset=['MarketCap', 'Price'])
     
     X = df[features]
     y = df[target]
+
+    # FILTER OUTLIERS
+    price_threshold = np.percentile(y, 99)
+    valid_indices = y <= price_threshold
+    X = X[valid_indices]
+    y = y[valid_indices]
+    print(f"Filtered outliers > ${price_threshold:.2f}")
     
-    # 3. Split into Training and Testing sets
-    # We train on 80% of the data and test on the other 20%
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
     
-    # 4. Scale the Features (Standardization)
+    # 2. Impute Missing Values (Learn from Train, Apply to Test)
+    from sklearn.impute import SimpleImputer
+    imputer = SimpleImputer(strategy='median')
+    X_train_imputed = imputer.fit_transform(X_train)
+    X_test_imputed = imputer.transform(X_test)
+    
+    # 3. Scale the Features (StandardScaler)
     from sklearn.preprocessing import StandardScaler
     scaler = StandardScaler()
-    X_train_scaled = scaler.fit_transform(X_train)
-    X_test_scaled = scaler.transform(X_test)
+    X_train_scaled = scaler.fit_transform(X_train_imputed)
+    X_test_scaled = scaler.transform(X_test_imputed)
 
     # 5. Train the Model
     model = LinearRegression()
@@ -69,8 +76,8 @@ def train():
     
     print(f"Model Trained! MSE: {mse:.2f}, R2 Score: {r2:.2f}")
     
-    # 7. Save the Model, Scaler, and Price Threshold
-    joblib.dump({'model': model, 'scaler': scaler, 'price_threshold': price_threshold}, MODEL_PATH)
+    # 7. Save the Model, Scaler, IMPUTER, and Price Threshold
+    joblib.dump({'model': model, 'scaler': scaler, 'imputer': imputer, 'price_threshold': price_threshold}, MODEL_PATH)
     print(f"Saved model to {MODEL_PATH}")
 
 if __name__ == "__main__":

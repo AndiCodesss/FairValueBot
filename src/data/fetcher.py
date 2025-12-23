@@ -99,29 +99,30 @@ def fetch_data():
                 continue
                 
             # These are the 14 features we use for prediction
+            # IMPORTANT: We do NOT use 0 as a default anymore. We want NaNs.
+            # Convert Nones to None (explicitly) so Pandas handles them as NaNs.
+            
             row = {
                 'Ticker': ticker,
                 'Price': price,
-                'EPS': info.get('trailingEps', 0),
-                'BookValue': info.get('bookValue', 0),
-                'SalesPerShare': info.get('revenuePerShare', 0),
-                'MarketCap': info.get('marketCap', 0),
-                'AvgVolume': info.get('averageDailyVolume3Month', 0),
-                'TotalDebt': info.get('totalDebt', 0),
-                'FreeCashFlow': info.get('freeCashflow', 0),
-                'OperatingCashFlow': info.get('operatingCashflow', 0),
-                'ROE': info.get('returnOnEquity', 0),
-                'ProfitMargin': info.get('profitMargins', 0),
-                'RevenueGrowth': info.get('revenueGrowth', 0),
-                'ForwardPE': info.get('forwardPE', 0),
-                'PriceToBook': info.get('priceToBook', 0),
-                'DebtToEquity': info.get('debtToEquity', 0)
+                'EPS': info.get('trailingEps'),
+                'BookValue': info.get('bookValue'),
+                'SalesPerShare': info.get('revenuePerShare'),
+                'MarketCap': info.get('marketCap'),
+                'AvgVolume': info.get('averageDailyVolume3Month'),
+                'TotalDebt': info.get('totalDebt'),
+                'FreeCashFlow': info.get('freeCashflow'),
+                'OperatingCashFlow': info.get('operatingCashflow'),
+                'ROE': info.get('returnOnEquity'),
+                'ProfitMargin': info.get('profitMargins'),
+                'RevenueGrowth': info.get('revenueGrowth'),
+                'ForwardPE': info.get('forwardPE'),
+                'PriceToBook': info.get('priceToBook'),
+                'DebtToEquity': info.get('debtToEquity')
             }
             
-            # Clean up Nones (replace with 0)
-            for key in row:
-                if row[key] is None:
-                    row[key] = 0
+            # Note: We removed the loop that forced valid Nones into 0s.
+            # Pandas will save these as empty strings (NaN) in the CSV.
             
             batch_data.append(row)
             

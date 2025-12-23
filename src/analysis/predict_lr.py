@@ -15,7 +15,7 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__fil
 MODEL_PATH = os.path.join(BASE_DIR, 'models', 'valuation_model_lr.joblib')
 REPORT_PATH = os.path.join(BASE_DIR, 'data', 'report_lr.csv')
 
-def analyze_ticker(ticker, model, scaler):
+def analyze_ticker(ticker, model, scaler, imputer):
     # Fetches data for a single ticker and predicts its price
     try:
         stock = yf.Ticker(ticker)
@@ -25,35 +25,36 @@ def analyze_ticker(ticker, model, scaler):
         
         # We need the same 14 features we used for training
         features = {
-            'EPS': info.get('trailingEps', 0),
-            'BookValue': info.get('bookValue', 0),
-            'SalesPerShare': info.get('revenuePerShare', 0),
-            'MarketCap': info.get('marketCap', 0),
-            'AvgVolume': info.get('averageDailyVolume3Month', 0),
-            'TotalDebt': info.get('totalDebt', 0),
-            'FreeCashFlow': info.get('freeCashflow', 0),
-            'OperatingCashFlow': info.get('operatingCashflow', 0),
-            'ROE': info.get('returnOnEquity', 0),
-            'ProfitMargin': info.get('profitMargins', 0),
-            'RevenueGrowth': info.get('revenueGrowth', 0),
-            'ForwardPE': info.get('forwardPE', 0),
-            'PriceToBook': info.get('priceToBook', 0),
-            'DebtToEquity': info.get('debtToEquity', 0)
+            'EPS': info.get('trailingEps'),
+            'BookValue': info.get('bookValue'),
+            'SalesPerShare': info.get('revenuePerShare'),
+            'MarketCap': info.get('marketCap'),
+            'AvgVolume': info.get('averageDailyVolume3Month'),
+            'TotalDebt': info.get('totalDebt'),
+            'FreeCashFlow': info.get('freeCashflow'),
+            'OperatingCashFlow': info.get('operatingCashflow'),
+            'ROE': info.get('returnOnEquity'),
+            'ProfitMargin': info.get('profitMargins'),
+            'RevenueGrowth': info.get('revenueGrowth'),
+            'ForwardPE': info.get('forwardPE'),
+            'PriceToBook': info.get('priceToBook'),
+            'DebtToEquity': info.get('debtToEquity')
         }
         
         if price is None:
             return None
 
-        # Clean up Nones
-        for key in features:
-            if features[key] is None:
-                features[key] = 0
-                
-        # Create DataFrame for prediction
+        # Convert to DataFrame
         df = pd.DataFrame([features])
         
-        # Scale the features
-        df_scaled = scaler.transform(df)
+        # Impute missing values
+        if imputer:
+            df_imputed = imputer.transform(df)
+        else:
+            df_imputed = df.fillna(0)
+        
+        # Scale the features!
+        df_scaled = scaler.transform(df_imputed)
         
         # Predict
         prediction = model.predict(df_scaled)[0]
@@ -80,11 +81,12 @@ def generate_report(tickers):
         print("Error: Model not found.")
         return
 
-    # Load dictionary containing model, scaler, and price threshold
+    # Load dictionary containing model, scaler, imputer, and price threshold
     saved_data = joblib.load(MODEL_PATH)
     model = saved_data['model']
     scaler = saved_data['scaler']
-    price_threshold = saved_data.get('price_threshold', 1000)  # Default if not saved
+    imputer = saved_data.get('imputer')
+    price_threshold = saved_data.get('price_threshold', 1000)
     
     print(f"Analyzing {len(tickers)} tickers with Linear Regression (max price: ${price_threshold:.2f})...")
     results = []
@@ -94,7 +96,7 @@ def generate_report(tickers):
         if i % 10 == 0:
             print(f"Processing {i}/{len(tickers)}: {ticker}...")
         
-        data = analyze_ticker(ticker, model, scaler)
+        data = analyze_ticker(ticker, model, scaler, imputer)
         if data:
             # Skip stocks above the training threshold
             if data['Price'] > price_threshold:

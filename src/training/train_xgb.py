@@ -32,25 +32,72 @@ def train():
     ]
     target = 'Price'
     
-    df = df.replace([np.inf, -np.inf], 0)
-    df = df.fillna(0)
+    # HANDLE MISSING DATA
+    # 0. Replace Infinity with NaN
+    df = df.replace([np.inf, -np.inf], np.nan)
+    
+    # 1. Drop rows where we have absolutely NO valid info or target
+    df = df.dropna(subset=['MarketCap', 'Price'])
     
     X = df[features]
     y = df[target]
     
+    # FILTER OUTLIERS
+    price_threshold = np.percentile(y, 99)
+    valid_indices = y <= price_threshold
+    X = X[valid_indices]
+    y = y[valid_indices]
+    print(f"Filtered outliers > ${price_threshold:.2f}")
+
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
     
-    # Initialize XGBoost
-    model = XGBRegressor(n_estimators=100, learning_rate=0.1, random_state=42)
-    model.fit(X_train, y_train)
+    # 2. Impute with Median
+    from sklearn.impute import SimpleImputer
+    imputer = SimpleImputer(strategy='median')
+    X_train_imputed = imputer.fit_transform(X_train)
+    X_test_imputed = imputer.transform(X_test)
     
-    predictions = model.predict(X_test)
+    # 3. Scale Features (PowerTransformer) and Target (QuantileTransformer)
+    from sklearn.preprocessing import PowerTransformer, QuantileTransformer
+    scaler_x = PowerTransformer()
+    X_train_scaled = scaler_x.fit_transform(X_train_imputed)
+    X_test_scaled = scaler_x.transform(X_test_imputed)
+    
+    scaler_y = QuantileTransformer(output_distribution='normal', n_quantiles=min(len(y_train), 1000))
+    y_train_transformed = scaler_y.fit_transform(y_train.values.reshape(-1, 1)).flatten()
+    
+    # Initialize XGBoost
+    model = XGBRegressor(n_estimators=200, learning_rate=0.05, max_depth=5, random_state=42)
+    model.fit(X_train_scaled, y_train_transformed)
+    
+    # Predict (Z-Scores)
+    z_score_predictions = model.predict(X_test_scaled)
+    # Inverse Transform
+    predictions = scaler_y.inverse_transform(z_score_predictions.reshape(-1, 1)).flatten()
+    predictions = np.clip(predictions, 0, None)
+    
+    from sklearn.metrics import mean_absolute_error
     mse = mean_squared_error(y_test, predictions)
+    mae = mean_absolute_error(y_test, predictions)
     r2 = r2_score(y_test, predictions)
     
-    print(f"Model Trained! MSE: {mse:.2f}, R2 Score: {r2:.2f}")
+    print(f"\nLast 20 Predictions:")
+    for i in range(20):
+        print(f"Real: {y_test.values[i]:8.2f} vs Pred: {predictions[i]:8.2f} (Diff: {predictions[i]-y_test.values[i]:.2f})")
+
+    print(f"\nModel Trained!")
+    print(f"MSE: {mse:.2f}")
+    print(f"MAE: {mae:.2f} (On average, we are off by ${mae:.2f})")
+    print(f"R2 Score: {r2:.2f}")
     
-    joblib.dump(model, MODEL_PATH)
+    # Save Dictionary
+    joblib.dump({
+        'model': model, 
+        'scaler': scaler_x, 
+        'scaler_y': scaler_y, 
+        'imputer': imputer, 
+        'price_threshold': price_threshold
+    }, MODEL_PATH)
     print(f"Saved model to {MODEL_PATH}")
 
 if __name__ == "__main__":
